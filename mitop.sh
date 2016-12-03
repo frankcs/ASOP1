@@ -1,46 +1,74 @@
 #!/bin/bash
-
-read -r -a pids <<< `ls -l /proc/ | awk '/[0-9]+$/ {print $9}' | awk '/[0-9]/'`
-
+echo "mytop is running ... please wait"
 
 function get_prop_from_file {
-	sed -n -e "s/^$2:\s*//p" $1
+	sed -n -e "s/^$2\s*//p" $1
 }
 
 function extract_number {
-        echo $1 | sed 's/[^0-9]*//g'
+    echo $1 | sed 's/[^0-9]*//g'
 }
 
-MEMTOTAL=`get_prop_from_file /proc/meminfo MemTotal`
-MEMFREE=`get_prop_from_file /proc/meminfo MemFree`
+
+MEMTOTAL=`get_prop_from_file /proc/meminfo MemTotal:`
+MEMFREE=`get_prop_from_file /proc/meminfo MemFree:`
 MEMTOTALNUM=`extract_number $MEMTOTAL`
 MEMFREENUM=`extract_number $MEMFREE`
-echo Total Memory: $MEMTOTAL
-echo Used Memory: $(($MEMTOTALNUM - $MEMFREENUM)) kB
-echo Free Memory: $MEMFREE
+PROCESSES=`get_prop_from_file /proc/stat processes`
+TOTALUSAGE=0
 
-#OUTPUT="PID USER PR VIRT S CPUTIME %MEM\n"
 
-declare -a pdata
+#HEADINGS="PID USER PR VIRT S %CPU %MEM\n TIME"
+
+read -r -a pids <<< `ls -l /proc/ | awk '/[0-9]+$/ {print $9}' | awk '/[0-9]/'`
+declare -A pdata
+
+INITIME=`awk '{print $1}' /proc/uptime`
 
 for pid in "${pids[@]}"
 do
 	if [ -d "/proc/$pid/" ];then
-    USERID=`get_prop_from_file /proc/$pid/status Uid|awk '{print $1}'`   
-    read PRIORITY VIRTUALMEM STATE UTIME STIME<<< $(awk '{print $18" "$23" "$3" "$14" "$15}' /proc/$pid/stat)
-    TOTALTIME=$(($UTIME + $STIME))    
 
-    MEMPERCENT=`bc <<< "scale=2; $VIRTUALMEM / 1024*100 / $MEMTOTALNUM"`
-    pdata[$pid]="$pid $USERID $PRIORITY $VIRTUALMEM $STATE $TOTALTIME $MEMPERCENT"
-    echo ${pdata[$pid]}
+    pdata[$pid, USER]=`get_prop_from_file /proc/$pid/status Uid:|awk '{print $1}'`   
+    read PRIORITY VIRTUALMEM STATE UTIME STIME <<< $(awk '{print $18" "$23" "$3" "$14" "$15}' /proc/$pid/stat)
 
-    #OUTPUT="$OUTPUT\n$pid $USERID $PRIORITY $VIRTUALMEM $STATE $TOTALTIME $MEMPERCENT\n"
+    pdata[$pid, CPUTIME1]=$(($UTIME + $STIME))
+    pdata[$pid, MEM]=`bc <<< "scale=2; $VIRTUALMEM / 1024*100 / $MEMTOTALNUM"`        
+    pdata[$pid, PR]=$PRIORITY
+    pdata[$pid, VIRT]=$VIRTUALMEM
+    pdata[$pid, S]=$STATE    
+
 	fi
 done
 
-#echo -ne $OUTPUT | column -t
+sleep 1
+
+ENDTIME=`awk '{print $1}' /proc/uptime`
+DIFF=`bc <<< "scale=2; ($ENDTIME - $INITIME)"`
+
+for pid in "${pids[@]}"
+do
+	if [ -d "/proc/$pid/" ];then    
+    read UTIME2 STIME2 <<< $(awk '{print $14" "$15}' /proc/$pid/stat)        
+    pdata[$pid, CPUTIME2]=$(($UTIME2 + $STIME2))
+    HERTZ=`getconf CLK_TCK`
+    pdata[$pid, CPU]=`bc <<< "scale=2; ((${pdata[$pid, CPUTIME2]} - ${pdata[$pid, CPUTIME1]}) / $HERTZ) * 100 / $DIFF"`
+    TOTALUSAGE=`bc <<< "scale=2; ${pdata[$pid, CPU]} + $TOTALUSAGE"`
+   
+    OUTPUT="$OUTPUT\n$pid ${pdata[$pid, USER]} ${pdata[$pid, PR]} ${pdata[$pid, VIRT]} ${pdata[$pid, S]} ${pdata[$pid, CPU]} ${pdata[$pid, MEM]} ${pdata[$pid, CPUTIME2]}\n"
+	fi
+done
 
 
+echo "*********************************************************************"
+echo Processes: $PROCESSES
+echo CPU Usage %: $TOTALUSAGE 
+echo Total Memory: $MEMTOTAL
+echo Used Memory: $(($MEMTOTALNUM - $MEMFREENUM)) kB
+echo Free Memory: $MEMFREE
+echo "*********************************************************************"
+echo -ne $OUTPUT | column -t | sort -k6rn,6 | head -10
+echo "*********************************************************************"
 
 
 
