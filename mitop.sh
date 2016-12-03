@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "mitop está ejecutando ... espere por favor"
 
-# Usada para extraer el valor de una propiedad de aquellos ficheros que tienen el formato de un clave/valor por línea
+# Usada para extraer el valor de una propiedad de aquellos ficheros que tienen el formato clave/valor por línea
 function get_prop_from_file {
     sed -n -e "s/^$2\s*//p" $1
 }
@@ -23,7 +23,7 @@ MEMFREENUM=`extract_number $MEMFREE`
 PROCESSES=${#pids[@]}
 TOTALUSAGE=0
 
-# Declarando un array asociativo para poner los datos de cada proceso 
+# Declarando un array asociativo para almacenar los datos de cada proceso 
 declare -A pdata
 
 # Tomando el tiempo inicial para calcular luego el porcentaje de uso de cpu
@@ -50,7 +50,7 @@ done
 # Haciendo la pausa para la nueva toma de datos (solo datos relativos al uso de CPU)
 sleep 1
 
-# Recogiendo el tiempo fianl para calcular el tiempo transcurrido entre las dos recogidas de datos
+# Recogiendo el tiempo final para calcular el tiempo transcurrido entre las dos recogidas de datos
 ENDTIME=`awk '{print $1}' /proc/uptime`
 DIFF=`bc <<< "scale=2; ($ENDTIME - $INITIME)"`
 
